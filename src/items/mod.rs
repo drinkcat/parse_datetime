@@ -425,7 +425,7 @@ pub(crate) fn at_local(date: Vec<Item>) -> Result<Zoned, ParseDateTimeError> {
 #[cfg(test)]
 mod tests {
     use super::{at_date, date::Date, parse, time::Time, Item};
-    use jiff::{tz::TimeZone, Timestamp, Zoned};
+    use jiff::{fmt::strtime, tz::TimeZone, Timestamp, Zoned};
 
     fn at_utc(date: Vec<Item>) -> Zoned {
         at_date(date, Timestamp::now().to_zoned(TimeZone::UTC)).unwrap()
@@ -433,12 +433,11 @@ mod tests {
 
     fn test_eq_fmt(fmt: &str, input: &str) -> String {
         let input = input.to_ascii_lowercase();
-        parse(&mut input.as_str())
+        let zoned = parse(&mut input.as_str())
             .map(at_utc)
             .map_err(|e| eprintln!("TEST FAILED AT:\n{e}"))
-            .expect("parsing failed during tests")
-            .format(fmt)
-            .to_string()
+            .expect("parsing failed during tests");
+        strtime::format(fmt, &zoned).unwrap()
     }
 
     #[test]

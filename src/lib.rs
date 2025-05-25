@@ -112,21 +112,35 @@ pub fn parse_datetime_at_date<S: AsRef<str> + Clone>(
 
 #[cfg(test)]
 mod tests {
+    use jiff::{
+        civil::{date, time, Weekday},
+        tz::{Offset, TimeZone},
+        ToSpan, Zoned,
+    };
+
+    use crate::ParseDateTimeError;
+
     static TEST_TIME: i64 = 1613371067;
+
+    fn check_timestamp(actual: Result<jiff::Zoned, ParseDateTimeError>, test_time: i64) {
+        let ts = actual.unwrap().timestamp();
+        assert_eq!(ts.as_nanosecond(), test_time as i128 * 1_000_000_000);
+    }
 
     #[cfg(test)]
     mod iso_8601 {
         use std::env;
 
-        use crate::ParseDateTimeError;
-        use crate::{parse_datetime, tests::TEST_TIME};
+        use crate::{parse_datetime, tests::TEST_TIME, ParseDateTimeError};
+
+        use super::check_timestamp;
 
         #[test]
         fn test_t_sep() {
             env::set_var("TZ", "UTC");
             let dt = "2021-02-15T06:37:47";
             let actual = parse_datetime(dt);
-            assert_eq!(actual.unwrap().timestamp(), TEST_TIME);
+            check_timestamp(actual, TEST_TIME);
         }
 
         #[test]
@@ -134,7 +148,7 @@ mod tests {
             env::set_var("TZ", "UTC");
             let dt = "2021-02-15 06:37:47";
             let actual = parse_datetime(dt);
-            assert_eq!(actual.unwrap().timestamp(), TEST_TIME);
+            check_timestamp(actual, TEST_TIME);
         }
 
         #[test]
@@ -142,7 +156,7 @@ mod tests {
             env::set_var("TZ", "UTC");
             let dt = "2021-02-14 22:37:47 -0800";
             let actual = parse_datetime(dt);
-            assert_eq!(actual.unwrap().timestamp(), TEST_TIME);
+            check_timestamp(actual, TEST_TIME);
         }
 
         #[test]
@@ -150,7 +164,7 @@ mod tests {
             env::set_var("TZ", "UTC");
             let dt = "2021-02-14T22:37:47 -0800";
             let actual = parse_datetime(dt);
-            assert_eq!(actual.unwrap().timestamp(), TEST_TIME);
+            check_timestamp(actual, TEST_TIME);
         }
 
         #[test]
@@ -158,7 +172,7 @@ mod tests {
             env::set_var("TZ", "UTC");
             let dt = "2021-02-14T22:37:47-8";
             let actual = parse_datetime(dt);
-            assert_eq!(actual.unwrap().timestamp(), TEST_TIME);
+            check_timestamp(actual, TEST_TIME);
         }
 
         #[test]
@@ -174,7 +188,7 @@ mod tests {
             env::set_var("TZ", "UTC");
             let dt = "@1613371067";
             let actual = parse_datetime(dt);
-            assert_eq!(actual.unwrap().timestamp(), TEST_TIME);
+            check_timestamp(actual, TEST_TIME);
         }
 
         #[test]
@@ -182,36 +196,39 @@ mod tests {
             env::set_var("TZ", "EST");
             let dt = "@1613371067";
             let actual = parse_datetime(dt);
-            assert_eq!(actual.unwrap().timestamp(), TEST_TIME);
+            check_timestamp(actual, TEST_TIME);
         }
     }
 
     #[cfg(test)]
     mod calendar_date_items {
         use crate::parse_datetime;
-        use chrono::{DateTime, Local, TimeZone};
+        use jiff::{civil::date, tz::TimeZone};
 
         #[test]
         fn single_digit_month_day() {
             std::env::set_var("TZ", "UTC");
-            let x = Local.with_ymd_and_hms(1987, 5, 7, 0, 0, 0).unwrap();
-            let expected = DateTime::fixed_offset(&x);
+            let x = date(2023, 12, 31).at(18, 30, 0, 0);
+            let expected = x.to_zoned(TimeZone::UTC).unwrap();
 
-            assert_eq!(Ok(expected), parse_datetime("1987-05-07"));
-            assert_eq!(Ok(expected), parse_datetime("1987-5-07"));
-            assert_eq!(Ok(expected), parse_datetime("1987-05-7"));
-            assert_eq!(Ok(expected), parse_datetime("1987-5-7"));
-            assert_eq!(Ok(expected), parse_datetime("5/7/1987"));
-            assert_eq!(Ok(expected), parse_datetime("5/07/1987"));
-            assert_eq!(Ok(expected), parse_datetime("05/7/1987"));
-            assert_eq!(Ok(expected), parse_datetime("05/07/1987"));
+            assert_eq!(expected, parse_datetime("1987-05-07").unwrap());
+            assert_eq!(expected, parse_datetime("1987-5-07").unwrap());
+            assert_eq!(expected, parse_datetime("1987-05-7").unwrap());
+            assert_eq!(expected, parse_datetime("1987-5-7").unwrap());
+            assert_eq!(expected, parse_datetime("5/7/1987").unwrap());
+            assert_eq!(expected, parse_datetime("5/07/1987").unwrap());
+            assert_eq!(expected, parse_datetime("05/7/1987").unwrap());
+            assert_eq!(expected, parse_datetime("05/07/1987").unwrap());
         }
     }
 
     #[cfg(test)]
     mod offsets {
-        use chrono::FixedOffset;
-        use chrono::{Local, NaiveDate};
+        use chrono::Local;
+        use jiff::civil::date;
+        use jiff::fmt::strtime;
+        use jiff::tz;
+        use jiff::tz::TimeZone;
 
         use crate::parse_datetime;
         use crate::ParseDateTimeError;
@@ -232,7 +249,7 @@ mod tests {
             let expected = format!("{}{}", Local::now().format("%Y%m%d"), "0000+0700");
             for offset in offsets {
                 let actual = parse_datetime(offset).unwrap();
-                assert_eq!(expected, format!("{}", actual.format("%Y%m%d%H%M%z")));
+                assert_eq!(expected, strtime::format("%Y%m%d%H%M%z", &actual).unwrap());
             }
         }
 
@@ -242,7 +259,7 @@ mod tests {
             let expected = format!("{}{}", Local::now().format("%Y%m%d"), "0000+0015");
             for offset in offsets {
                 let actual = parse_datetime(offset).unwrap();
-                assert_eq!(expected, format!("{}", actual.format("%Y%m%d%H%M%z")));
+                assert_eq!(expected, strtime::format("%Y%m%d%H%M%z", &actual).unwrap());
             }
         }
 
@@ -258,11 +275,9 @@ mod tests {
         #[test]
         fn test_datetime_with_offset() {
             let actual = parse_datetime("1997-01-19 08:17:48 +2").unwrap();
-            let expected = NaiveDate::from_ymd_opt(1997, 1, 19)
-                .unwrap()
-                .and_hms_opt(8, 17, 48)
-                .unwrap()
-                .and_local_timezone(FixedOffset::east_opt(2 * 3600).unwrap())
+            let expected = date(1997, 1, 19)
+                .at(8, 17, 48, 0)
+                .to_zoned(TimeZone::fixed(tz::offset(2)))
                 .unwrap();
             assert_eq!(actual, expected);
         }
@@ -270,11 +285,9 @@ mod tests {
         #[test]
         fn test_datetime_with_timezone() {
             let actual = parse_datetime("1997-01-19 08:17:48 BRT").unwrap();
-            let expected = NaiveDate::from_ymd_opt(1997, 1, 19)
-                .unwrap()
-                .and_hms_opt(8, 17, 48)
-                .unwrap()
-                .and_local_timezone(FixedOffset::west_opt(3 * 3600).unwrap())
+            let expected = date(1997, 1, 19)
+                .at(8, 17, 48, 0)
+                .to_zoned(TimeZone::fixed(tz::offset(3)))
                 .unwrap();
             assert_eq!(actual, expected);
         }
@@ -301,50 +314,54 @@ mod tests {
 
     #[cfg(test)]
     mod weekday {
-        use chrono::{DateTime, Local, TimeZone};
+        use jiff::{civil::date, fmt::strtime, tz::TimeZone, Zoned};
 
         use crate::parse_datetime_at_date;
 
-        fn get_formatted_date(date: DateTime<Local>, weekday: &str) -> String {
+        fn get_formatted_date(date: Zoned, weekday: &str) -> String {
             let result = parse_datetime_at_date(date, weekday).unwrap();
 
-            result.format("%F %T %f").to_string()
+            strtime::format("%F %T %f", &result).unwrap()
         }
 
         #[test]
         fn test_weekday() {
             // add some constant hours and minutes and seconds to check its reset
-            let date = Local.with_ymd_and_hms(2023, 2, 28, 10, 12, 3).unwrap();
+            let date = date(2023, 2, 28)
+                .at(10, 12, 3, 0)
+                .to_zoned(TimeZone::UTC)
+                .unwrap();
 
+            // TODO: get_formatted_date should take a borrow
             // 2023-2-28 is tuesday
             assert_eq!(
-                get_formatted_date(date, "tuesday"),
+                get_formatted_date(date.clone(), "tuesday"),
                 "2023-02-28 00:00:00 000000000"
             );
 
             // 2023-3-01 is wednesday
             assert_eq!(
-                get_formatted_date(date, "wed"),
+                get_formatted_date(date.clone(), "wed"),
                 "2023-03-01 00:00:00 000000000"
             );
 
             assert_eq!(
-                get_formatted_date(date, "thu"),
+                get_formatted_date(date.clone(), "thu"),
                 "2023-03-02 00:00:00 000000000"
             );
 
             assert_eq!(
-                get_formatted_date(date, "fri"),
+                get_formatted_date(date.clone(), "fri"),
                 "2023-03-03 00:00:00 000000000"
             );
 
             assert_eq!(
-                get_formatted_date(date, "sat"),
+                get_formatted_date(date.clone(), "sat"),
                 "2023-03-04 00:00:00 000000000"
             );
 
             assert_eq!(
-                get_formatted_date(date, "sun"),
+                get_formatted_date(date.clone(), "sun"),
                 "2023-03-05 00:00:00 000000000"
             );
         }
@@ -352,8 +369,9 @@ mod tests {
 
     #[cfg(test)]
     mod timestamp {
+        use jiff::{tz::TimeZone, Timestamp};
+
         use crate::parse_datetime;
-        use chrono::{TimeZone, Utc};
 
         #[test]
         fn test_positive_and_negative_offsets() {
@@ -363,12 +381,16 @@ mod tests {
 
             for offset in offsets {
                 // positive offset
-                let time = Utc.timestamp_opt(offset, 0).unwrap();
+                let time = Timestamp::from_second(offset)
+                    .unwrap()
+                    .to_zoned(TimeZone::UTC);
                 let dt = parse_datetime(format!("@{offset}"));
                 assert_eq!(dt.unwrap(), time);
 
                 // negative offset
-                let time = Utc.timestamp_opt(-offset, 0).unwrap();
+                let time = Timestamp::from_second(-offset)
+                    .unwrap()
+                    .to_zoned(TimeZone::UTC);
                 let dt = parse_datetime(format!("@-{offset}"));
                 assert_eq!(dt.unwrap(), time);
             }
@@ -377,23 +399,27 @@ mod tests {
 
     #[cfg(test)]
     mod timeonly {
+        use super::check_timestamp;
         use crate::parse_datetime_at_date;
-        use chrono::{Local, TimeZone};
+        use jiff::{civil::date, tz::TimeZone};
         use std::env;
+
         #[test]
         fn test_time_only() {
             env::set_var("TZ", "UTC");
-            let test_date = Local.with_ymd_and_hms(2024, 3, 3, 0, 0, 0).unwrap();
-            let parsed_time = parse_datetime_at_date(test_date, "9:04:30 PM +0530")
-                .unwrap()
-                .timestamp();
-            assert_eq!(parsed_time, 1709480070);
+            let test_date = date(2024, 3, 3)
+                .at(0, 0, 0, 0)
+                .to_zoned(TimeZone::UTC)
+                .unwrap();
+            let parsed_time = parse_datetime_at_date(test_date, "9:04:30 PM +0530");
+            check_timestamp(parsed_time, 1709480070);
         }
     }
     /// Used to test example code presented in the README.
     mod readme_test {
+        use jiff::{civil::date, tz::TimeZone};
+
         use crate::parse_datetime;
-        use chrono::{Local, TimeZone};
 
         #[test]
         fn test_readme_code() {
@@ -401,7 +427,10 @@ mod tests {
 
             assert_eq!(
                 dt.unwrap(),
-                Local.with_ymd_and_hms(2021, 2, 14, 6, 37, 47).unwrap()
+                date(2024, 2, 14)
+                    .at(6, 37, 47, 0)
+                    .to_zoned(TimeZone::system())
+                    .unwrap()
             );
         }
     }
@@ -423,10 +452,12 @@ mod tests {
     #[test]
     fn test_datetime_ending_in_z() {
         use crate::parse_datetime;
-        use chrono::{TimeZone, Utc};
 
         let actual = parse_datetime("2023-06-03 12:00:01Z").unwrap();
-        let expected = Utc.with_ymd_and_hms(2023, 6, 3, 12, 0, 1).unwrap();
+        let expected = date(2023, 6, 3)
+            .at(12, 0, 1, 0)
+            .to_zoned(TimeZone::UTC)
+            .unwrap();
         assert_eq!(actual, expected);
     }
 
@@ -445,12 +476,10 @@ mod tests {
         std::env::set_var("TZ", "UTC0");
 
         // 1997-01-01 00:00:00 +0000
-        let expected = chrono::NaiveDate::from_ymd_opt(1997, 1, 1)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .fixed_offset();
+        let expected = date(1997, 1, 1)
+            .at(0, 0, 0, 0)
+            .to_zoned(TimeZone::UTC)
+            .unwrap();
 
         for s in [
             "1997-01-01 00:00:00 +0000",
@@ -473,12 +502,10 @@ mod tests {
     #[test]
     fn test_parse_datetime_notz_nodelta() {
         std::env::set_var("TZ", "UTC0");
-        let expected = chrono::NaiveDate::from_ymd_opt(1997, 1, 1)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .fixed_offset();
+        let expected = date(1997, 1, 1)
+            .at(0, 0, 0, 0)
+            .to_zoned(TimeZone::UTC)
+            .unwrap();
 
         for s in [
             "1997-01-01 00:00:00.000000000",
@@ -495,12 +522,10 @@ mod tests {
     #[test]
     fn test_parse_date_notz_nodelta() {
         std::env::set_var("TZ", "UTC0");
-        let expected = chrono::NaiveDate::from_ymd_opt(1997, 1, 1)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .fixed_offset();
+        let expected = date(1997, 1, 1)
+            .at(0, 0, 0, 0)
+            .to_zoned(TimeZone::UTC)
+            .unwrap();
 
         for s in ["1997-01-01", "19970101", "01/01/1997", "01/01/97"] {
             let actual = crate::parse_datetime(s).unwrap();
@@ -513,12 +538,10 @@ mod tests {
         std::env::set_var("TZ", "UTC0");
 
         // 1998-01-01
-        let expected = chrono::NaiveDate::from_ymd_opt(1998, 1, 1)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .fixed_offset();
+        let expected = date(1998, 1, 1)
+            .at(0, 0, 0, 0)
+            .to_zoned(TimeZone::UTC)
+            .unwrap();
 
         for s in [
             "1997-01-01 00:00:00 +0000 +1 year",
@@ -540,12 +563,10 @@ mod tests {
     #[test]
     fn test_parse_datetime_notz_delta() {
         std::env::set_var("TZ", "UTC0");
-        let expected = chrono::NaiveDate::from_ymd_opt(1998, 1, 1)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .fixed_offset();
+        let expected = date(1998, 1, 1)
+            .at(0, 0, 0, 0)
+            .to_zoned(TimeZone::UTC)
+            .unwrap();
 
         for s in [
             "1997-01-01 00:00:00.000000000 1 year",
@@ -570,12 +591,10 @@ mod tests {
     #[test]
     fn test_parse_date_notz_delta() {
         std::env::set_var("TZ", "UTC0");
-        let expected = chrono::NaiveDate::from_ymd_opt(1998, 1, 1)
-            .unwrap()
-            .and_hms_opt(0, 0, 0)
-            .unwrap()
-            .and_utc()
-            .fixed_offset();
+        let expected = date(1998, 1, 1)
+            .at(0, 0, 0, 0)
+            .to_zoned(TimeZone::UTC)
+            .unwrap();
 
         for s in [
             "1997-01-01 +1 year",
@@ -590,50 +609,46 @@ mod tests {
 
     #[test]
     fn test_time_only() {
-        use chrono::{FixedOffset, Local};
         std::env::set_var("TZ", "UTC");
 
-        let offset = FixedOffset::east_opt(5 * 60 * 60 + 1800).unwrap();
-        let expected = Local::now()
-            .date_naive()
-            .and_hms_opt(21, 4, 30)
-            .unwrap()
-            .and_local_timezone(offset)
+        let offset = Offset::from_seconds(5 * 60 * 60 + 1800).unwrap();
+        let expected = Zoned::now()
+            .with()
+            .time(time(21, 4, 30, 0))
+            .offset(offset)
+            .build()
             .unwrap();
+
         let actual = crate::parse_datetime("9:04:30 PM +0530").unwrap();
         assert_eq!(actual, expected);
     }
 
     #[test]
     fn test_weekday_only() {
-        use chrono::{Datelike, Days, Local, MappedLocalTime, NaiveTime, Weekday};
         std::env::set_var("TZ", "UTC0");
-        let now = Local::now();
-        let midnight = NaiveTime::from_hms_opt(0, 0, 0).unwrap();
+        let now = Zoned::now();
         let today = now.weekday();
-        let midnight_today = if let MappedLocalTime::Single(t) = now.with_time(midnight) {
-            t
-        } else {
-            panic!()
-        };
+        let midnight_today = now.with().time(time(0, 0, 0, 0)).build().unwrap();
 
         for (s, day) in [
-            ("sunday", Weekday::Sun),
-            ("monday", Weekday::Mon),
-            ("tuesday", Weekday::Tue),
-            ("wednesday", Weekday::Wed),
-            ("thursday", Weekday::Thu),
-            ("friday", Weekday::Fri),
-            ("saturday", Weekday::Sat),
+            ("sunday", Weekday::Sunday),
+            ("monday", Weekday::Monday),
+            ("tuesday", Weekday::Tuesday),
+            ("wednesday", Weekday::Wednesday),
+            ("thursday", Weekday::Thursday),
+            ("friday", Weekday::Friday),
+            ("saturday", Weekday::Saturday),
         ] {
             let actual = crate::parse_datetime(s).unwrap();
-            let delta = Days::new(u64::from(day.days_since(today)));
-            let expected = midnight_today.checked_add_days(delta).unwrap();
+            let delta = day.since(today);
+            let expected = &midnight_today + delta.days();
             assert_eq!(actual, expected);
         }
     }
 
     mod test_relative {
+
+        use jiff::fmt::strtime;
 
         use crate::parse_datetime;
         use std::env;
@@ -643,10 +658,11 @@ mod tests {
             env::set_var("TZ", "UTC");
 
             assert_eq!(
-                parse_datetime("28 feb + 1 month")
-                    .expect("parse_datetime")
-                    .format("%m%d")
-                    .to_string(),
+                strtime::format(
+                    "%m%d",
+                    &parse_datetime("28 feb + 1 month").expect("parse_datetime")
+                )
+                .unwrap(),
                 "0328"
             );
 
@@ -662,10 +678,11 @@ mod tests {
 
             // 28 feb 2023 + 1 day = 1 mar
             assert_eq!(
-                parse_datetime("28 feb 2023 + 1 day")
-                    .unwrap()
-                    .format("%Y-%m-%dT%H:%M:%S%:z")
-                    .to_string(),
+                strtime::format(
+                    "%Y-%m-%dT%H:%M:%S%:z",
+                    &parse_datetime("28 feb 2023 + 1 day").expect("parse_datetime")
+                )
+                .unwrap(),
                 "2023-03-01T00:00:00+00:00"
             );
         }
@@ -674,24 +691,28 @@ mod tests {
         fn month_overflow() {
             env::set_var("TZ", "UTC");
             assert_eq!(
-                parse_datetime("2024-01-31 + 1 month")
-                    .unwrap()
-                    .format("%Y-%m-%dT%H:%M:%S%:z")
-                    .to_string(),
-                "2024-03-02T00:00:00+00:00",
+                strtime::format(
+                    "%Y-%m-%dT%H:%M:%S%:z",
+                    &parse_datetime("2024-01-31 + 1 month").expect("parse_datetime")
+                )
+                .unwrap(),
+                "2024-03-02T00:00:00+00:00"
             );
 
             assert_eq!(
-                parse_datetime("2024-02-29 + 1 month")
-                    .unwrap()
-                    .format("%Y-%m-%dT%H:%M:%S%:z")
-                    .to_string(),
-                "2024-03-29T00:00:00+00:00",
+                strtime::format(
+                    "%Y-%m-%dT%H:%M:%S%:z",
+                    &parse_datetime("2024-02-29 + 1 month").expect("parse_datetime")
+                )
+                .unwrap(),
+                "2024-03-29T00:00:00+00:00"
             );
         }
     }
 
     mod test_gnu {
+        use jiff::fmt::strtime;
+
         use crate::parse_datetime;
 
         #[test]
@@ -700,19 +721,19 @@ mod tests {
             let input = "0000-03-02 00:00:00";
             assert_eq!(
                 input,
-                parse_datetime(input).unwrap().format(FMT).to_string()
+                strtime::format(FMT, &parse_datetime(input).unwrap()).unwrap()
             );
 
             let input = "2621-03-10 00:00:00";
             assert_eq!(
                 input,
-                parse_datetime(input).unwrap().format(FMT).to_string()
+                strtime::format(FMT, &parse_datetime(input).unwrap()).unwrap()
             );
 
             let input = "1038-03-10 00:00:00";
             assert_eq!(
                 input,
-                parse_datetime(input).unwrap().format(FMT).to_string()
+                strtime::format(FMT, &parse_datetime(input).unwrap()).unwrap()
             );
         }
     }
