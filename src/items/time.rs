@@ -39,7 +39,6 @@
 
 use std::fmt::Display;
 
-use chrono::FixedOffset;
 use winnow::{
     ascii::{digit1, float},
     combinator::{alt, opt, peek, preceded},
@@ -95,7 +94,7 @@ impl Offset {
     }
 }
 
-impl From<Offset> for chrono::FixedOffset {
+impl From<Offset> for jiff::tz::Offset {
     fn from(
         Offset {
             negative,
@@ -103,14 +102,10 @@ impl From<Offset> for chrono::FixedOffset {
             minutes,
         }: Offset,
     ) -> Self {
-        let secs = hours * 3600 + minutes * 60;
+        let secs: i32 = (hours * 3600 + minutes * 60) as i32;
+        let secs: i32 = if negative { -secs } else { secs };
 
-        if negative {
-            FixedOffset::west_opt(secs.try_into().expect("secs overflow"))
-                .expect("timezone overflow")
-        } else {
-            FixedOffset::east_opt(secs.try_into().unwrap()).unwrap()
-        }
+        jiff::tz::Offset::from_seconds(secs).unwrap()
     }
 }
 

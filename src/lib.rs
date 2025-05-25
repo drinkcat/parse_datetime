@@ -11,7 +11,7 @@
 use std::error::Error;
 use std::fmt::{self, Display};
 
-use chrono::{DateTime, FixedOffset, Local};
+use jiff::Zoned;
 
 mod items;
 
@@ -60,9 +60,7 @@ impl Error for ParseDateTimeError {}
 ///
 /// This function will return `Err(ParseDateTimeError::InvalidInput)` if the input string
 /// cannot be parsed as a relative time.
-pub fn parse_datetime<S: AsRef<str> + Clone>(
-    input: S,
-) -> Result<DateTime<FixedOffset>, ParseDateTimeError> {
+pub fn parse_datetime<S: AsRef<str> + Clone>(input: S) -> Result<Zoned, ParseDateTimeError> {
     let input = input.as_ref().to_ascii_lowercase();
     match items::parse(&mut input.as_str()) {
         Ok(x) => items::at_local(x),
@@ -102,12 +100,12 @@ pub fn parse_datetime<S: AsRef<str> + Clone>(
 /// This function will return `Err(ParseDateTimeError::InvalidInput)` if the input string
 /// cannot be parsed as a relative time.
 pub fn parse_datetime_at_date<S: AsRef<str> + Clone>(
-    date: DateTime<Local>,
+    date: Zoned,
     input: S,
-) -> Result<DateTime<FixedOffset>, ParseDateTimeError> {
+) -> Result<Zoned, ParseDateTimeError> {
     let input = input.as_ref().to_ascii_lowercase();
     match items::parse(&mut input.as_str()) {
-        Ok(x) => items::at_date(x, date.into()),
+        Ok(x) => items::at_date(x, date),
         Err(_) => Err(ParseDateTimeError::InvalidInput),
     }
 }

@@ -50,9 +50,10 @@ mod timezone {
     }
 }
 
+use chrono::Datelike;
 use chrono::NaiveDate;
-use chrono::{DateTime, Datelike, FixedOffset, TimeZone, Timelike};
 
+use jiff::{Timestamp, ToSpan, Zoned};
 use winnow::error::{StrContext, StrContextValue};
 use winnow::{
     ascii::{digit1, multispace0},
@@ -282,72 +283,40 @@ pub fn parse(input: &mut &str) -> ModalResult<Vec<Item>> {
     Ok(items)
 }
 
-fn new_date(
-    year: i32,
-    month: u32,
-    day: u32,
-    hour: u32,
-    minute: u32,
-    second: u32,
-    offset: FixedOffset,
-) -> Option<DateTime<FixedOffset>> {
-    let newdate = NaiveDate::from_ymd_opt(year, month, day)
-        .and_then(|naive| naive.and_hms_opt(hour, minute, second))?;
-
-    Some(DateTime::<FixedOffset>::from_local(newdate, offset))
-}
-
-/// Restores year, month, day, etc after applying the timezone
-/// returns None if timezone overflows the date
-fn with_timezone_restore(
-    offset: time::Offset,
-    at: DateTime<FixedOffset>,
-) -> Option<DateTime<FixedOffset>> {
-    let offset: FixedOffset = chrono::FixedOffset::from(offset);
-    let copy = at;
-    let x = at
-        .with_timezone(&offset)
-        .with_day(copy.day())?
-        .with_month(copy.month())?
-        .with_year(copy.year())?
-        .with_hour(copy.hour())?
-        .with_minute(copy.minute())?
-        .with_second(copy.second())?;
-    Some(x)
-}
-
-fn last_day_of_month(year: i32, month: u32) -> u32 {
-    NaiveDate::from_ymd_opt(year, month + 1, 1)
-        .unwrap_or(NaiveDate::from_ymd_opt(year + 1, 1, 1).unwrap())
+// TODO: Convert to jiff
+fn last_day_of_month(year: i16, month: i8) -> u32 {
+    NaiveDate::from_ymd_opt(year as i32, month as u32 + 1, 1)
+        .unwrap_or(NaiveDate::from_ymd_opt(year as i32 + 1, 1, 1).unwrap())
         .pred_opt()
         .unwrap()
         .day()
 }
 
-fn at_date_inner(date: Vec<Item>, mut d: DateTime<FixedOffset>) -> Option<DateTime<FixedOffset>> {
-    d = d.with_hour(0).unwrap();
-    d = d.with_minute(0).unwrap();
-    d = d.with_second(0).unwrap();
-    d = d.with_nanosecond(0).unwrap();
+fn at_date_inner(date: Vec<Item>, mut d: Zoned) -> Option<Zoned> {
+    d = d
+        .with()
+        .hour(0)
+        .minute(0)
+        .second(0)
+        .nanosecond(0)
+        .build()
+        .unwrap();
 
     for item in date {
         match item {
             Item::Timestamp(ts) => {
-                d = chrono::Utc
-                    .timestamp_opt(ts.into(), 0)
-                    .unwrap()
-                    .with_timezone(&d.timezone())
+                let timestamp = Timestamp::new(ts as i64, 0).unwrap();
+                d = Zoned::new(timestamp, d.time_zone().clone());
             }
             Item::Date(date::Date { day, month, year }) => {
-                d = new_date(
-                    year.map(|x| x as i32).unwrap_or(d.year()),
-                    month,
-                    day,
-                    d.hour(),
-                    d.minute(),
-                    d.second(),
-                    *d.offset(),
-                )?;
+                let mut zw = d
+                    .with()
+                    .day(day.try_into().ok()?)
+                    .month(month.try_into().ok()?);
+                if let Some(year) = year {
+                    zw = zw.year(year.try_into().ok()?)
+                }
+                d = zw.build().ok()?;
             }
             Item::DateTime(combined::DateTime {
                 date: date::Date { day, month, year },
@@ -360,87 +329,84 @@ fn at_date_inner(date: Vec<Item>, mut d: DateTime<FixedOffset>) -> Option<DateTi
                     },
                 ..
             }) => {
-                let offset = offset.map(chrono::FixedOffset::from).unwrap_or(*d.offset());
-
-                d = new_date(
-                    year.map(|x| x as i32).unwrap_or(d.year()),
-                    month,
-                    day,
-                    hour,
-                    minute,
-                    second as u32,
-                    offset,
-                )?;
+                let mut zw = d
+                    .with()
+                    .day(day.try_into().ok()?)
+                    .month(month.try_into().ok()?);
+                if let Some(year) = year {
+                    zw = zw.year(year.try_into().ok()?)
+                }
+                // TODO: We ignore nanoseconds here, is that ok?
+                zw = zw.time(jiff::civil::time(
+                    hour.try_into().ok()?,
+                    minute.try_into().ok()?,
+                    (second as u32).try_into().ok()?,
+                    0,
+                ));
+                if let Some(offset) = offset {
+                    zw = zw.offset(offset.into());
+                }
+                d = zw.build().ok()?;
             }
-            Item::Year(year) => d = d.with_year(year as i32).unwrap_or(d),
+            // TODO: Not sure why this one defaults back to original date instead of failing.
+            Item::Year(year) => d = d.with().year(year.try_into().ok()?).build().unwrap_or(d),
             Item::Time(time::Time {
                 hour,
                 minute,
                 second,
                 offset,
             }) => {
-                let offset = offset.map(chrono::FixedOffset::from).unwrap_or(*d.offset());
-                d = new_date(
-                    d.year(),
-                    d.month(),
-                    d.day(),
-                    hour,
-                    minute,
-                    second as u32,
-                    offset,
-                )?;
+                // TODO: We ignore nanoseconds here, is that ok?
+                let mut zw = d.with().time(jiff::civil::time(
+                    hour.try_into().ok()?,
+                    minute.try_into().ok()?,
+                    (second as u32).try_into().ok()?,
+                    0,
+                ));
+                if let Some(offset) = offset {
+                    zw = zw.offset(offset.into());
+                }
+                d = zw.build().ok()?;
             }
             Item::Weekday(weekday::Weekday {
                 offset: _, // TODO: use the offset
                 day,
             }) => {
                 let mut beginning_of_day = d
-                    .with_hour(0)
-                    .unwrap()
-                    .with_minute(0)
-                    .unwrap()
-                    .with_second(0)
-                    .unwrap()
-                    .with_nanosecond(0)
+                    .with()
+                    .hour(0)
+                    .minute(0)
+                    .second(0)
+                    .nanosecond(0)
+                    .build()
                     .unwrap();
                 let day = day.into();
 
                 while beginning_of_day.weekday() != day {
-                    beginning_of_day += chrono::Duration::days(1);
+                    beginning_of_day += 1.days();
                 }
 
                 d = beginning_of_day
             }
             Item::Relative(relative::Relative::Years(x)) => {
-                d = d.with_year(d.year() + x)?;
+                d += x.years();
             }
             Item::Relative(relative::Relative::Months(x)) => {
                 // *NOTE* This is done in this way to conform to
                 // GNU behavior.
                 let days = last_day_of_month(d.year(), d.month());
-                if x >= 0 {
-                    d += d
-                        .date_naive()
-                        .checked_add_days(chrono::Days::new((days * x as u32) as u64))?
-                        .signed_duration_since(d.date_naive());
-                } else {
-                    d += d
-                        .date_naive()
-                        .checked_sub_days(chrono::Days::new((days * -x as u32) as u64))?
-                        .signed_duration_since(d.date_naive());
-                }
+
+                d += (days as i32 * x).days();
             }
-            Item::Relative(relative::Relative::Days(x)) => d += chrono::Duration::days(x.into()),
-            Item::Relative(relative::Relative::Hours(x)) => d += chrono::Duration::hours(x.into()),
+            Item::Relative(relative::Relative::Days(x)) => d += x.days(),
+            Item::Relative(relative::Relative::Hours(x)) => d += x.hours(),
             Item::Relative(relative::Relative::Minutes(x)) => {
-                d += chrono::Duration::minutes(x.into());
+                d += x.minutes();
             }
             // Seconds are special because they can be given as a float
-            Item::Relative(relative::Relative::Seconds(x)) => {
-                d += chrono::Duration::seconds(x as i64);
-            }
+            Item::Relative(relative::Relative::Seconds(x)) => d += (x as i64).seconds(),
             Item::TimeZone(offset) => {
-                d = with_timezone_restore(offset, d)?;
+                d = d.with().offset(offset.into()).build().ok()?;
             }
         }
     }
@@ -448,24 +414,21 @@ fn at_date_inner(date: Vec<Item>, mut d: DateTime<FixedOffset>) -> Option<DateTi
     Some(d)
 }
 
-pub(crate) fn at_date(
-    date: Vec<Item>,
-    d: DateTime<FixedOffset>,
-) -> Result<DateTime<FixedOffset>, ParseDateTimeError> {
+pub(crate) fn at_date(date: Vec<Item>, d: Zoned) -> Result<Zoned, ParseDateTimeError> {
     at_date_inner(date, d).ok_or(ParseDateTimeError::InvalidInput)
 }
 
-pub(crate) fn at_local(date: Vec<Item>) -> Result<DateTime<FixedOffset>, ParseDateTimeError> {
-    at_date(date, chrono::Local::now().into())
+pub(crate) fn at_local(date: Vec<Item>) -> Result<Zoned, ParseDateTimeError> {
+    at_date(date, Zoned::now())
 }
 
 #[cfg(test)]
 mod tests {
     use super::{at_date, date::Date, parse, time::Time, Item};
-    use chrono::{DateTime, FixedOffset};
+    use jiff::{tz::TimeZone, Timestamp, Zoned};
 
-    fn at_utc(date: Vec<Item>) -> DateTime<FixedOffset> {
-        at_date(date, chrono::Utc::now().fixed_offset()).unwrap()
+    fn at_utc(date: Vec<Item>) -> Zoned {
+        at_date(date, Timestamp::now().to_zoned(TimeZone::UTC)).unwrap()
     }
 
     fn test_eq_fmt(fmt: &str, input: &str) -> String {
