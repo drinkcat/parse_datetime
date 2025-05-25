@@ -411,6 +411,8 @@ mod tests {
                 .at(0, 0, 0, 0)
                 .to_zoned(TimeZone::UTC)
                 .unwrap();
+            let parsed_time = parse_datetime_at_date(test_date.clone(), "9:04:30 PM +0530");
+            println!("{}", parsed_time.unwrap().to_string());
             let parsed_time = parse_datetime_at_date(test_date, "9:04:30 PM +0530");
             check_timestamp(parsed_time, 1709480070);
         }
