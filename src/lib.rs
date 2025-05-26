@@ -208,7 +208,7 @@ mod tests {
         #[test]
         fn single_digit_month_day() {
             std::env::set_var("TZ", "UTC");
-            let x = date(2023, 12, 31).at(18, 30, 0, 0);
+            let x = date(1987, 5, 7).at(0, 0, 0, 0);
             let expected = x.to_zoned(TimeZone::UTC).unwrap();
 
             assert_eq!(expected, parse_datetime("1987-05-07").unwrap());
@@ -287,7 +287,7 @@ mod tests {
             let actual = parse_datetime("1997-01-19 08:17:48 BRT").unwrap();
             let expected = date(1997, 1, 19)
                 .at(8, 17, 48, 0)
-                .to_zoned(TimeZone::fixed(tz::offset(3)))
+                .to_zoned(TimeZone::fixed(tz::offset(-3)))
                 .unwrap();
             assert_eq!(actual, expected);
         }
@@ -321,7 +321,7 @@ mod tests {
         fn get_formatted_date(date: &Zoned, weekday: &str) -> String {
             let result = parse_datetime_at_date(date, weekday).unwrap();
 
-            strtime::format("%F %T %f", &result).unwrap()
+            strtime::format("%F %T %N", &result).unwrap()
         }
 
         #[test]
@@ -429,7 +429,7 @@ mod tests {
 
             assert_eq!(
                 dt.unwrap(),
-                date(2024, 2, 14)
+                date(2021, 2, 14)
                     .at(6, 37, 47, 0)
                     .to_zoned(TimeZone::system())
                     .unwrap()
@@ -617,8 +617,10 @@ mod tests {
         let expected = Zoned::now()
             .with()
             .time(time(21, 4, 30, 0))
-            .offset(offset)
             .build()
+            .unwrap()
+            .datetime()
+            .to_zoned(offset.to_time_zone())
             .unwrap();
 
         let actual = crate::parse_datetime("9:04:30 PM +0530").unwrap();
