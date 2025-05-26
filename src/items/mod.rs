@@ -295,10 +295,7 @@ fn last_day_of_month(year: i16, month: i8) -> u32 {
 fn at_date_inner(date: Vec<Item>, d: &Zoned) -> Option<Zoned> {
     let mut d = d
         .with()
-        .hour(0)
-        .minute(0)
-        .second(0)
-        .nanosecond(0)
+        .time(jiff::civil::time(0, 0, 0, 0))
         .build()
         .unwrap();
 
@@ -343,10 +340,11 @@ fn at_date_inner(date: Vec<Item>, d: &Zoned) -> Option<Zoned> {
                     (second as u32).try_into().ok()?,
                     0,
                 ));
-                if let Some(offset) = offset {
-                    zw = zw.offset(offset.into());
-                }
                 d = zw.build().ok()?;
+                if let Some(offset) = offset {
+                    let offset: jiff::tz::Offset = offset.into();
+                    d = d.datetime().to_zoned(offset.to_time_zone()).ok()?;
+                }
             }
             // TODO: Not sure why this one defaults back to original date instead of failing.
             Item::Year(year) => d = d.with().year(year.try_into().ok()?).build().unwrap_or(d),
@@ -357,16 +355,16 @@ fn at_date_inner(date: Vec<Item>, d: &Zoned) -> Option<Zoned> {
                 offset,
             }) => {
                 // TODO: We ignore nanoseconds here, is that ok?
-                let mut zw = d.with().time(jiff::civil::time(
+                d = d.with().time(jiff::civil::time(
                     hour.try_into().ok()?,
                     minute.try_into().ok()?,
                     (second as u32).try_into().ok()?,
                     0,
-                ));
+                )).build().ok()?;
                 if let Some(offset) = offset {
-                    zw = zw.offset(offset.into());
+                    let offset: jiff::tz::Offset = offset.into();
+                    d = d.datetime().to_zoned(offset.to_time_zone()).ok()?;
                 }
-                d = zw.build().ok()?;
             }
             Item::Weekday(weekday::Weekday {
                 offset: _, // TODO: use the offset
@@ -374,10 +372,7 @@ fn at_date_inner(date: Vec<Item>, d: &Zoned) -> Option<Zoned> {
             }) => {
                 let mut beginning_of_day = d
                     .with()
-                    .hour(0)
-                    .minute(0)
-                    .second(0)
-                    .nanosecond(0)
+                    .time(jiff::civil::time(0, 0, 0, 0))
                     .build()
                     .unwrap();
                 let day = day.into();
@@ -406,7 +401,8 @@ fn at_date_inner(date: Vec<Item>, d: &Zoned) -> Option<Zoned> {
             // Seconds are special because they can be given as a float
             Item::Relative(relative::Relative::Seconds(x)) => d += (x as i64).seconds(),
             Item::TimeZone(offset) => {
-                d = d.with().offset(offset.into()).build().ok()?;
+                let offset: jiff::tz::Offset = offset.into();
+                d = d.datetime().to_zoned(offset.to_time_zone()).ok()?;
             }
         }
     }
