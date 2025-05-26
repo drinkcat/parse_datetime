@@ -292,8 +292,8 @@ fn last_day_of_month(year: i16, month: i8) -> u32 {
         .day()
 }
 
-fn at_date_inner(date: Vec<Item>, mut d: Zoned) -> Option<Zoned> {
-    d = d
+fn at_date_inner(date: Vec<Item>, d: &Zoned) -> Option<Zoned> {
+    let mut d = d
         .with()
         .hour(0)
         .minute(0)
@@ -414,12 +414,12 @@ fn at_date_inner(date: Vec<Item>, mut d: Zoned) -> Option<Zoned> {
     Some(d)
 }
 
-pub(crate) fn at_date(date: Vec<Item>, d: Zoned) -> Result<Zoned, ParseDateTimeError> {
+pub(crate) fn at_date(date: Vec<Item>, d: &Zoned) -> Result<Zoned, ParseDateTimeError> {
     at_date_inner(date, d).ok_or(ParseDateTimeError::InvalidInput)
 }
 
 pub(crate) fn at_local(date: Vec<Item>) -> Result<Zoned, ParseDateTimeError> {
-    at_date(date, Zoned::now())
+    at_date(date, &Zoned::now())
 }
 
 #[cfg(test)]
@@ -428,7 +428,7 @@ mod tests {
     use jiff::{fmt::strtime, tz::TimeZone, Timestamp, Zoned};
 
     fn at_utc(date: Vec<Item>) -> Zoned {
-        at_date(date, Timestamp::now().to_zoned(TimeZone::UTC)).unwrap()
+        at_date(date, &Timestamp::now().to_zoned(TimeZone::UTC)).unwrap()
     }
 
     fn test_eq_fmt(fmt: &str, input: &str) -> String {

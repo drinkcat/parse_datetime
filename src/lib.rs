@@ -100,7 +100,7 @@ pub fn parse_datetime<S: AsRef<str> + Clone>(input: S) -> Result<Zoned, ParseDat
 /// This function will return `Err(ParseDateTimeError::InvalidInput)` if the input string
 /// cannot be parsed as a relative time.
 pub fn parse_datetime_at_date<S: AsRef<str> + Clone>(
-    date: Zoned,
+    date: &Zoned,
     input: S,
 ) -> Result<Zoned, ParseDateTimeError> {
     let input = input.as_ref().to_ascii_lowercase();
@@ -318,7 +318,7 @@ mod tests {
 
         use crate::parse_datetime_at_date;
 
-        fn get_formatted_date(date: Zoned, weekday: &str) -> String {
+        fn get_formatted_date(date: &Zoned, weekday: &str) -> String {
             let result = parse_datetime_at_date(date, weekday).unwrap();
 
             strtime::format("%F %T %f", &result).unwrap()
@@ -335,33 +335,33 @@ mod tests {
             // TODO: get_formatted_date should take a borrow
             // 2023-2-28 is tuesday
             assert_eq!(
-                get_formatted_date(date.clone(), "tuesday"),
+                get_formatted_date(&date, "tuesday"),
                 "2023-02-28 00:00:00 000000000"
             );
 
             // 2023-3-01 is wednesday
             assert_eq!(
-                get_formatted_date(date.clone(), "wed"),
+                get_formatted_date(&date, "wed"),
                 "2023-03-01 00:00:00 000000000"
             );
 
             assert_eq!(
-                get_formatted_date(date.clone(), "thu"),
+                get_formatted_date(&date, "thu"),
                 "2023-03-02 00:00:00 000000000"
             );
 
             assert_eq!(
-                get_formatted_date(date.clone(), "fri"),
+                get_formatted_date(&date, "fri"),
                 "2023-03-03 00:00:00 000000000"
             );
 
             assert_eq!(
-                get_formatted_date(date.clone(), "sat"),
+                get_formatted_date(&date, "sat"),
                 "2023-03-04 00:00:00 000000000"
             );
 
             assert_eq!(
-                get_formatted_date(date.clone(), "sun"),
+                get_formatted_date(&date, "sun"),
                 "2023-03-05 00:00:00 000000000"
             );
         }
@@ -411,9 +411,9 @@ mod tests {
                 .at(0, 0, 0, 0)
                 .to_zoned(TimeZone::UTC)
                 .unwrap();
-            let parsed_time = parse_datetime_at_date(test_date.clone(), "9:04:30 PM +0530");
+            let parsed_time = parse_datetime_at_date(&test_date, "9:04:30 PM +0530");
             println!("{}", parsed_time.unwrap().to_string());
-            let parsed_time = parse_datetime_at_date(test_date, "9:04:30 PM +0530");
+            let parsed_time = parse_datetime_at_date(&test_date, "9:04:30 PM +0530");
             check_timestamp(parsed_time, 1709480070);
         }
     }
