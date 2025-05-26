@@ -35,7 +35,7 @@ impl Display for ParseDateTimeError {
 
 impl Error for ParseDateTimeError {}
 
-/// Parses a time string and returns a `DateTime` representing the
+/// Parses a time string and returns a `Zoned` representing the
 /// absolute time of the string.
 ///
 /// # Arguments
@@ -45,15 +45,15 @@ impl Error for ParseDateTimeError {}
 /// # Examples
 ///
 /// ```
-/// use chrono::{DateTime, Utc, TimeZone};
+/// use jiff::{civil::date, tz::TimeZone, Zoned};
 /// let time = parse_datetime::parse_datetime("2023-06-03 12:00:01Z");
-/// assert_eq!(time.unwrap(), Utc.with_ymd_and_hms(2023, 06, 03, 12, 00, 01).unwrap());
+/// assert_eq!(time.unwrap(), date(2023, 06, 03).at(12, 00, 01, 0).to_zoned(TimeZone::UTC).unwrap());
 /// ```
 ///
 ///
 /// # Returns
 ///
-/// * `Ok(DateTime<FixedOffset>)` - If the input string can be parsed as a time
+/// * `Ok(Zoned)` - If the input string can be parsed as a time
 /// * `Err(ParseDateTimeError)` - If the input string cannot be parsed as a relative time
 ///
 /// # Errors
@@ -67,7 +67,7 @@ pub fn parse_datetime<S: AsRef<str> + Clone>(input: S) -> Result<Zoned, ParseDat
         Err(_) => Err(ParseDateTimeError::InvalidInput),
     }
 }
-/// Parses a time string at a specific date and returns a `DateTime` representing the
+/// Parses a time string at a specific date and returns a `Zoned` representing the
 /// absolute time of the string.
 ///
 /// # Arguments
@@ -78,21 +78,21 @@ pub fn parse_datetime<S: AsRef<str> + Clone>(input: S) -> Result<Zoned, ParseDat
 /// # Examples
 ///
 /// ```
-/// use chrono::{Duration, Local};
+/// use jiff::{fmt::strtime, Zoned};
 /// use parse_datetime::parse_datetime_at_date;
 ///
-///  let now = Local::now();
-///  let after = parse_datetime_at_date(now, "2024-09-13UTC +3 days");
+///  let now = Zoned::now();
+///  let after = parse_datetime_at_date(&now, "2024-09-13UTC +3 days");
 ///
 ///  assert_eq!(
 ///    "2024-09-16",
-///    after.unwrap().naive_utc().format("%F").to_string()
+///    strtime::format("%F", &after.unwrap()).unwrap()
 ///  );
 /// ```
 ///
 /// # Returns
 ///
-/// * `Ok(DateTime<FixedOffset>)` - If the input string can be parsed as a time
+/// * `Ok(Zoned)` - If the input string can be parsed as a time
 /// * `Err(ParseDateTimeError)` - If the input string cannot be parsed as a relative time
 ///
 /// # Errors
